@@ -3,6 +3,10 @@ import tempfile
 import subprocess
 from pathlib import Path
 from groq import Groq
+import static_ffmpeg
+
+# Garante que os binários estão disponíveis antes de usar
+static_ffmpeg.add_paths()
 
 SUPPORTED_FORMATS = {".m4a", ".mp3", ".wav", ".mp4", ".ogg", ".flac", ".webm"}
 CHUNK_MINUTES = 10
