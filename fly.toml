@@ -1,0 +1,11 @@
+app = "webscribebot"
+primary_region = "gru"
+
+[build]
+
+[processes]
+app = "python main.py"
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "256mb"
