@@ -74,6 +74,7 @@ def create_app() -> Client:
         status = await message.reply(f"📚 Disciplina: **{discipline}**\n🎙️ Transcrevendo...")
 
         tmp_audio = None
+        tmp_transcription = None
         tmp_notes = None
 
         try:
@@ -92,7 +93,15 @@ def create_app() -> Client:
             notes = generate(transcription, discipline)
             await _safe_edit(status, f"📚 Disciplina: **{discipline}**\n✅ Transcrito\n✅ Anotações prontas\n☁️ Salvando no Drive...")
 
-            # Salva e faz upload
+            # Salva e faz upload da transcrição bruta
+            transcription_filename = Path(original_name).stem + "_transcricao.md"
+            with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w", encoding="utf-8") as f:
+                f.write(transcription)
+                tmp_transcription = Path(f.name)
+
+            transcription_link = upload(tmp_transcription, transcription_filename)
+
+            # Salva e faz upload das anotações
             notes_filename = Path(original_name).stem + ".md"
             with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w", encoding="utf-8") as f:
                 f.write(notes)
@@ -104,7 +113,8 @@ def create_app() -> Client:
                 status,
                 f"✨ **Pronto!**\n\n"
                 f"📚 {discipline}\n"
-                f"📄 [{notes_filename}]({drive_link})",
+                f"📄 [{notes_filename}]({drive_link})\n"
+                f"📝 [{transcription_filename}]({transcription_link})",
             )
 
         except Exception as e:
@@ -114,6 +124,8 @@ def create_app() -> Client:
         finally:
             if tmp_audio:
                 tmp_audio.unlink(missing_ok=True)
+            if tmp_transcription:
+                tmp_transcription.unlink(missing_ok=True)
             if tmp_notes:
                 tmp_notes.unlink(missing_ok=True)
 
