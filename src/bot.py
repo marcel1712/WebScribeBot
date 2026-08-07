@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from pyrogram import Client, filters
+from pyrogram.errors import RPCError
 from pyrogram.types import Message
 
 from src.transcriber import transcribe, is_supported
@@ -25,6 +26,13 @@ def _extract_discipline(filename: str) -> str:
     clean = re.sub(r'^aula[_\-]?\d*[_\-]?', '', stem, flags=re.IGNORECASE)
     spaced = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', clean)
     return spaced.strip() if spaced.strip() else stem
+
+
+async def _safe_edit(status: Message, text: str) -> None:
+    try:
+        await status.edit(text)
+    except RPCError:
+        log.warning("Falha ao atualizar mensagem de status (ignorado)", exc_info=True)
 
 
 def create_app() -> Client:
@@ -78,11 +86,11 @@ def create_app() -> Client:
 
             # Transcreve
             transcription = transcribe(tmp_audio, original_name)
-            await status.edit(f"📚 Disciplina: **{discipline}**\n✅ Transcrito\n🧠 Gerando anotações...")
+            await _safe_edit(status, f"📚 Disciplina: **{discipline}**\n✅ Transcrito\n🧠 Gerando anotações...")
 
             # Gera notas
             notes = generate(transcription, discipline)
-            await status.edit(f"📚 Disciplina: **{discipline}**\n✅ Transcrito\n✅ Anotações prontas\n☁️ Salvando no Drive...")
+            await _safe_edit(status, f"📚 Disciplina: **{discipline}**\n✅ Transcrito\n✅ Anotações prontas\n☁️ Salvando no Drive...")
 
             # Salva e faz upload
             notes_filename = Path(original_name).stem + ".md"
@@ -92,15 +100,16 @@ def create_app() -> Client:
 
             drive_link = upload(tmp_notes, notes_filename)
 
-            await status.edit(
+            await _safe_edit(
+                status,
                 f"✨ **Pronto!**\n\n"
                 f"📚 {discipline}\n"
-                f"📄 [{notes_filename}]({drive_link})"
+                f"📄 [{notes_filename}]({drive_link})",
             )
 
         except Exception as e:
             log.exception("Erro no processamento")
-            await status.edit(f"❌ Erro: `{e}`")
+            await _safe_edit(status, f"❌ Erro: `{e}`")
 
         finally:
             if tmp_audio:
