@@ -1,5 +1,5 @@
 pyrogram==2.0.106
-groq
+assemblyai
 anthropic
 python-dotenv
 google-api-python-client

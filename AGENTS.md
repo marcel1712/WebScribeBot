@@ -1,10 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What this is
 
-WebScribeBot is a personal Telegram bot: a single allowed user sends an audio recording of a university lecture, and the bot transcribes it, generates structured study notes with Claude, and uploads the notes to Google Drive as markdown.
+WebScribeBot is a personal Telegram bot: a single allowed user sends an audio recording of a university lecture, and the bot transcribes it, generates structured study notes with Codex, and uploads the notes to Google Drive as markdown.
 
 ## Running
 
@@ -19,7 +19,7 @@ Required env vars (see `.env.example`, loaded via `python-dotenv` in [main.py](m
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` — Pyrogram bot credentials
 - `ALLOWED_USER_ID` — only this Telegram user ID is served; every handler checks it first
 - `ASSEMBLYAI_API_KEY` — AssemblyAI transcription
-- `ANTHROPIC_API_KEY` — Claude note generation
+- `ANTHROPIC_API_KEY` — Codex note generation
 - `DRIVE_FOLDER_ID` — destination Google Drive folder
 - `GOOGLE_TOKEN_JSON` — OAuth token for Drive, used in production (Railway) instead of a local `token.json` file
 
@@ -34,9 +34,9 @@ Deployed on Railway (see [railway.json](railway.json), `startCommand: python mai
 The flow spans two Pyrogram handlers in [src/bot.py](src/bot.py), split around a button the user has to click:
 
 1. **Ingest** — `handle_audio` matches on `filters.audio | filters.voice | filters.document`, filters to `ALLOWED_USER_ID`, downloads the file, then validates it with `has_audio_stream()` ([src/transcriber.py](src/transcriber.py)) — an `ffprobe` check on the actual file content, not the extension, so any format ffmpeg can decode is accepted regardless of how the filename looks. `_extract_discipline` optionally strips an `aula_NN` prefix and splits camelCase into words to derive a discipline name if the filename encodes one (e.g. `aula_02RedesComplexas.m4a`); if it doesn't, the raw filename stem is used instead — nothing about ingestion depends on the filename matching that convention.
-2. **Mode choice** — once the audio is downloaded and validated, `handle_audio` stores it in the in-memory `_pending_jobs` dict and replies with an inline keyboard ("Só transcrição" vs "Transcrição + anotações"). `handle_mode_choice` (the `on_callback_query` handler, matched via `filters.regex(r"^mode:...")`) picks the job back up once the user taps a button and drives the rest of the pipeline. This exists so a Claude API call isn't made (and paid for) for lectures where only the raw transcript is wanted.
-3. **Transcribe** — [src/transcriber.py](src/transcriber.py) `transcribe()` sends the audio straight to AssemblyAI (`aai.Transcriber().transcribe()`) with `language_code="pt"` and a `keyterms_prompt` list built from a fixed base (`_BASE_KEYTERMS`) plus the discipline name (`_build_keyterms`) to bias vocabulary. AssemblyAI accepts up to 5GB / 10h of audio in a single request, so there's no chunking, no format normalization step, and no silence-boundary logic to maintain — the whole lecture goes up in one call regardless of length. (This replaced an earlier Groq `whisper-large-v3` pipeline that had to split long files into 10-minute chunks because of Groq's 24MB request limit; see git history if that context is ever needed again.)
-4. **Summarize (optional)** — only when the user picked "Transcrição + anotações". [src/notes.py](src/notes.py) `generate()` sends the raw transcript plus discipline name to Claude (`claude-sonnet-4-5`) with a large Portuguese system prompt that defines the expected note structure (overview, numbered topics, key points) and domain framing (USP São Carlos, Sistemas de Informação). When editing note quality/behavior, this system prompt is the place to change.
+2. **Mode choice** — once the audio is downloaded and validated, `handle_audio` stores it in the in-memory `_pending_jobs` dict and replies with an inline keyboard ("Só transcrição" vs "Transcrição + anotações"). `handle_mode_choice` (the `on_callback_query` handler, matched via `filters.regex(r"^mode:...")`) picks the job back up once the user taps a button and drives the rest of the pipeline. This exists so a Codex API call isn't made (and paid for) for lectures where only the raw transcript is wanted.
+3. **Transcribe** — [src/transcriber.py](src/transcriber.py) `transcribe()` first normalizes the input to a standard mp3 via ffmpeg (`_normalize_audio`) regardless of the original container/codec, then sends it to AssemblyAI (`aai.Transcriber().transcribe()`) with `language_code="pt"` and a `word_boost` list derived from the discipline name (`_build_word_boost`) to bias vocabulary. AssemblyAI accepts the file directly (handling its own upload) and supports audio up to 10 hours long, so there's no manual chunking/splitting step.
+4. **Summarize (optional)** — only when the user picked "Transcrição + anotações". [src/notes.py](src/notes.py) `generate()` sends the raw transcript plus discipline name to Codex (`Codex-sonnet-4-5`) with a large Portuguese system prompt that defines the expected note structure (overview, numbered topics, key points) and domain framing (USP São Carlos, Sistemas de Informação). When editing note quality/behavior, this system prompt is the place to change.
 5. **Upload** — [src/drive.py](src/drive.py) `upload()` writes a file as `text/markdown` into `DRIVE_FOLDER_ID` and returns the `webViewLink`. The raw transcription (`<stem>_transcricao.md`, useful for feeding into tools like NotebookLM) is always uploaded; the generated notes (`<stem>.md`) only when that mode was picked.
 
 Progress is reported back to the user by editing the same status message through each stage, and temp files (downloaded audio, generated notes markdown) are always cleaned up in a `finally` block.
